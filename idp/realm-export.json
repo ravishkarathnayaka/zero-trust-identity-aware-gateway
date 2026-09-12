@@ -1,0 +1,190 @@
+{
+  "id": "ztna-realm",
+  "realm": "ztna-realm",
+  "displayName": "NIST SP 800-207 Zero Trust Architecture Realm",
+  "displayNameHtml": "<b>Zero Trust Network Access</b> Realm",
+  "notBefore": 0,
+  "defaultSignatureAlgorithm": "RS256",
+  "revokeRefreshToken": false,
+  "refreshTokenMaxReuse": 0,
+  "accessTokenLifespan": 3600,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
+  "accessCodeLifespan": 60,
+  "accessCodeLifespanUserAction": 300,
+  "accessCodeLifespanLogin": 1800,
+  "actionTokenGeneratedByAdminLifespan": 43200,
+  "actionTokenGeneratedByUserLifespan": 300,
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": false,
+  "rememberMe": true,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "roles": {
+    "realm": [
+      {
+        "name": "finance-admin",
+        "description": "Full access to Finance API and ledger operations"
+      },
+      {
+        "name": "engineering",
+        "description": "Full access to Engineering Developer Portal and CI/CD pipelines"
+      },
+      {
+        "name": "auditor",
+        "description": "Read-only access for compliance and financial auditors"
+      },
+      {
+        "name": "user",
+        "description": "Base corporate user role"
+      }
+    ]
+  },
+  "groups": [
+    {
+      "name": "Finance",
+      "path": "/Finance",
+      "realmRoles": ["finance-admin"]
+    },
+    {
+      "name": "Engineering",
+      "path": "/Engineering",
+      "realmRoles": ["engineering"]
+    },
+    {
+      "name": "Compliance",
+      "path": "/Compliance",
+      "realmRoles": ["auditor"]
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@corp.local",
+      "firstName": "Alice",
+      "lastName": "FinanceLead",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "finance-admin",
+        "user"
+      ],
+      "attributes": {
+        "department": ["Finance"],
+        "clearance": ["Tier-1"]
+      }
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "email": "bob@corp.local",
+      "firstName": "Bob",
+      "lastName": "SeniorDev",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "engineering",
+        "user"
+      ],
+      "attributes": {
+        "department": ["Engineering"],
+        "clearance": ["Tier-2"]
+      }
+    },
+    {
+      "username": "charlie",
+      "enabled": true,
+      "email": "charlie@corp.local",
+      "firstName": "Charlie",
+      "lastName": "Auditor",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "auditor",
+        "user"
+      ],
+      "attributes": {
+        "department": ["Compliance"],
+        "clearance": ["Audit"]
+      }
+    },
+    {
+      "username": "eve",
+      "enabled": true,
+      "email": "eve@corp.local",
+      "firstName": "Eve",
+      "lastName": "ExternalGuest",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "user"
+      ],
+      "attributes": {
+        "department": ["Guest"]
+      }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "ztna-gateway",
+      "name": "Zero Trust Identity-Aware Gateway",
+      "description": "NIST SP 800-207 PEP Gateway OIDC Client",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "ztna-gateway-secret-dev-key",
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "redirectUris": [
+        "https://localhost:8443/*",
+        "http://localhost:8080/*",
+        "https://127.0.0.1:8443/*"
+      ],
+      "webOrigins": [
+        "*"
+      ],
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "roles",
+        "profile",
+        "email"
+      ]
+    }
+  ]
+}

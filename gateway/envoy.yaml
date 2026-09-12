@@ -1,0 +1,248 @@
+static_resources:
+  listeners:
+    # --------------------------------------------------------------------------
+    # HTTPS Listener (Port 8443) - Policy Enforcement Point (PEP) with TLS
+    # --------------------------------------------------------------------------
+    - name: https_listener
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 8443
+      filter_chains:
+        - transport_socket:
+            name: envoy.transport_sockets.tls
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+              common_tls_context:
+                tls_certificates:
+                  - certificate_chain:
+                      filename: /etc/envoy/certs/server.crt
+                    private_key:
+                      filename: /etc/envoy/certs/server.key
+                validation_context:
+                  trusted_ca:
+                    filename: /etc/envoy/certs/ca.crt
+                  require_client_certificate: false
+          filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ztna_https_pep
+                codec_type: AUTO
+                http_filters:
+                  # External Authorization Filter (ExtAuthz)
+                  - name: envoy.filters.http.ext_authz
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+                      http_service:
+                        server_uri:
+                          uri: http://ext_authz:9001
+                          cluster: ext_authz
+                          timeout: 2.0s
+                        authorization_request:
+                          allowed_headers:
+                            patterns:
+                              - exact: authorization
+                              - exact: x-device-posture
+                              - exact: x-client-cert-fingerprint
+                              - exact: x-forwarded-for
+                              - prefix: x-
+                        authorization_response:
+                          allowed_upstream_headers:
+                            patterns:
+                              - exact: x-user-id
+                              - exact: x-user-roles
+                              - exact: x-auth-decision
+                              - exact: x-ztna-policy
+                              - prefix: x-
+                          allowed_client_headers:
+                            patterns:
+                              - exact: www-authenticate
+                              - exact: content-type
+                              - prefix: x-
+                      failure_mode_allow: false
+                      transport_api_version: V3
+
+                  # Router filter
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+                route_config:
+                  name: ztna_protected_routes
+                  virtual_hosts:
+                    - name: ztna_services
+                      domains: ["*"]
+                      routes:
+                        # Finance API Microsegment
+                        - match:
+                            prefix: "/api/finance"
+                          route:
+                            cluster: finance_api
+                            timeout: 10s
+
+                        # Engineering Developer Portal Microsegment
+                        - match:
+                            prefix: "/api/dev"
+                          route:
+                            cluster: dev_portal
+                            timeout: 10s
+
+                        # Keycloak Identity Provider Passthrough
+                        - match:
+                            prefix: "/auth"
+                          route:
+                            cluster: keycloak
+                            prefix_rewrite: "/"
+                            timeout: 30s
+
+                        # Gateway Health Check
+                        - match:
+                            prefix: "/healthz"
+                          route:
+                            cluster: ext_authz
+                            timeout: 5s
+
+    # --------------------------------------------------------------------------
+    # HTTP Plaintext Listener (Port 8000) for development convenience
+    # --------------------------------------------------------------------------
+    - name: http_listener
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 8000
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ztna_http_pep
+                codec_type: AUTO
+                http_filters:
+                  - name: envoy.filters.http.ext_authz
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+                      http_service:
+                        server_uri:
+                          uri: http://ext_authz:9001
+                          cluster: ext_authz
+                          timeout: 2.0s
+                        authorization_request:
+                          allowed_headers:
+                            patterns:
+                              - exact: authorization
+                              - exact: x-device-posture
+                              - exact: x-client-cert-fingerprint
+                              - exact: x-forwarded-for
+                              - prefix: x-
+                        authorization_response:
+                          allowed_upstream_headers:
+                            patterns:
+                              - exact: x-user-id
+                              - exact: x-user-roles
+                              - exact: x-auth-decision
+                              - exact: x-ztna-policy
+                              - prefix: x-
+                          allowed_client_headers:
+                            patterns:
+                              - exact: www-authenticate
+                              - exact: content-type
+                              - prefix: x-
+                      failure_mode_allow: false
+                      transport_api_version: V3
+
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+                route_config:
+                  name: ztna_http_routes
+                  virtual_hosts:
+                    - name: ztna_services_http
+                      domains: ["*"]
+                      routes:
+                        - match:
+                            prefix: "/api/finance"
+                          route:
+                            cluster: finance_api
+                            timeout: 10s
+                        - match:
+                            prefix: "/api/dev"
+                          route:
+                            cluster: dev_portal
+                            timeout: 10s
+                        - match:
+                            prefix: "/healthz"
+                          route:
+                            cluster: ext_authz
+                            timeout: 5s
+
+  # ----------------------------------------------------------------------------
+  # Upstream Clusters: ExtAuthz, Microservices, and IdP
+  # ----------------------------------------------------------------------------
+  clusters:
+    # ExtAuthz Policy Administrator Service
+    - name: ext_authz
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      connect_timeout: 0.5s
+      load_assignment:
+        cluster_name: ext_authz
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: ext_authz
+                      port_value: 9001
+
+    # Protected Finance API Microservice
+    - name: finance_api
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      connect_timeout: 1s
+      load_assignment:
+        cluster_name: finance_api
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: finance_api
+                      port_value: 5001
+
+    # Protected Developer Portal Microservice
+    - name: dev_portal
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      connect_timeout: 1s
+      load_assignment:
+        cluster_name: dev_portal
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: dev_portal
+                      port_value: 5002
+
+    # Keycloak OIDC Identity Provider
+    - name: keycloak
+      type: STRICT_DNS
+      lb_policy: ROUND_ROBIN
+      connect_timeout: 2s
+      load_assignment:
+        cluster_name: keycloak
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: keycloak
+                      port_value: 8080
+
+admin:
+  address:
+    socket_address:
+      address: 127.0.0.1
+      port_value: 9901

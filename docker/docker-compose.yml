@@ -1,0 +1,158 @@
+services:
+  # ============================================================================
+  # Identity Provider (IdP): Keycloak
+  # Handles user authentication, credential storage, and JWT token issuance.
+  # Pre-loads ztna-realm with Alice (Finance) and Bob (Engineering).
+  # ============================================================================
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.5
+    container_name: ztna_keycloak
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_RELATIVE_PATH: "/"
+    volumes:
+      - ../idp/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    ports:
+      - "${KEYCLOAK_PORT:-8080}:8080"
+    networks:
+      - ztna_public
+      - ztna_internal
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080;echo -e \"GET /health/ready HTTP/1.1\\r\\nhost: localhost:8080\\r\\nConnection: close\\r\\n\\r\\n\" >&3;grep -q \"HTTP/1.1 200\" <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+
+  # ============================================================================
+  # Policy Decision Point (PDP - Policy Engine): Open Policy Agent (OPA)
+  # Evaluates Rego v1 policies (RBAC, device posture, time context).
+  # ============================================================================
+  opa:
+    image: openpolicyagent/opa:0.68.0
+    container_name: ztna_opa_pdp
+    command:
+      - "run"
+      - "--server"
+      - "--log-level=info"
+      - "--addr=0.0.0.0:8181"
+      - "/policies"
+    volumes:
+      - ../policies:/policies:ro
+    ports:
+      - "${OPA_PORT:-8181}:8181"
+    networks:
+      - ztna_internal
+    healthcheck:
+      test: ["CMD", "opa", "version"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # ============================================================================
+  # Policy Decision Point (PDP - Policy Administrator): ExtAuthz Middleware
+  # Bridges Envoy PEP to Keycloak and OPA. Parses JWTs & device posture headers.
+  # ============================================================================
+  ext_authz:
+    build:
+      context: ../gateway/ext_authz_service
+      dockerfile: Dockerfile
+    container_name: ztna_ext_authz
+    environment:
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ztna-realm
+      OPA_URL: http://opa:8181
+      VERIFY_JWT_SIGNATURE: ${VERIFY_JWT_SIGNATURE:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    expose:
+      - "9001"
+    depends_on:
+      - opa
+      - keycloak
+    networks:
+      - ztna_internal
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:9001/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ============================================================================
+  # Policy Enforcement Point (PEP): Envoy Proxy
+  # Terminates TLS, enforces microsegmentation, and executes ext_authz filter.
+  # ============================================================================
+  envoy:
+    image: envoyproxy/envoy:v1.30-latest
+    container_name: ztna_envoy_pep
+    command:
+      - "envoy"
+      - "-c"
+      - "/etc/envoy/envoy.yaml"
+      - "--log-level"
+      - "info"
+    volumes:
+      - ../gateway/envoy.yaml:/etc/envoy/envoy.yaml:ro
+      - ./certs:/etc/envoy/certs:ro
+    ports:
+      - "${ENVOY_HTTPS_PORT:-8443}:8443"
+      - "${ENVOY_HTTP_PORT:-8000}:8000"
+      - "${ENVOY_ADMIN_PORT:-9901}:9901"
+    depends_on:
+      - ext_authz
+      - finance_api
+      - dev_portal
+    networks:
+      - ztna_public
+      - ztna_internal
+
+  # ============================================================================
+  # Protected Microservice 1: Finance Core API
+  # Isolated in internal network; strictly accessible only via Envoy PEP.
+  # ============================================================================
+  finance_api:
+    build:
+      context: ../services/finance_api
+      dockerfile: Dockerfile
+    container_name: ztna_finance_api
+    expose:
+      - "5001"
+    networks:
+      - ztna_internal
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5001/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ============================================================================
+  # Protected Microservice 2: Engineering Developer Portal API
+  # Isolated in internal network; strictly accessible only via Envoy PEP.
+  # ============================================================================
+  dev_portal:
+    build:
+      context: ../services/dev_portal
+      dockerfile: Dockerfile
+    container_name: ztna_dev_portal
+    expose:
+      - "5002"
+    networks:
+      - ztna_internal
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5002/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+# ==============================================================================
+# Microsegmented Network Definitions
+# ==============================================================================
+networks:
+  # Public Ingress network exposed to external clients / host
+  ztna_public:
+    driver: bridge
+  # Strictly internal zero-trust transit network (no host port publication for services)
+  ztna_internal:
+    driver: bridge
