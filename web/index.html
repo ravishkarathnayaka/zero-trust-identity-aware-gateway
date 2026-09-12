@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZTNA-GATEWAY // NIST SP 800-207 Identity-Aware Microsegmentation Gateway</title>
+  <meta name="description" content="NIST SP 800-207 Zero Trust Network Access Gateway with Keycloak OIDC, Envoy ExtAuthz, and Open Policy Agent (OPA) device posture verification." />
+
+  <!-- Tailwind CSS & Custom Config -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            zt: {
+              950: '#060814',
+              900: '#0b0f24',
+              850: '#101633',
+              800: '#171f45',
+              border: 'rgba(139, 92, 246, 0.22)',
+              indigo: '#6366f1',
+              violet: '#8b5cf6',
+              cyan: '#06b6d4',
+              emerald: '#10b981',
+              rose: '#f43f5e'
+            }
+          },
+          fontFamily: {
+            sans: ['Plus Jakarta Sans', 'Inter', 'system-ui', 'sans-serif'],
+            code: ['JetBrains Mono', 'Fira Code', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-violet-600 selection:text-white">
+
+  <!-- ========================================================================= -->
+  <!-- Top Command HUD / Status Bar                                              -->
+  <!-- ========================================================================= -->
+  <header class="border-b border-zt-border bg-zt-950/80 backdrop-blur-xl sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      
+      <!-- Brand & Title -->
+      <div class="flex items-center gap-3">
+        <div class="h-10 w-10 rounded-xl bg-gradient-to-tr from-violet-600 via-indigo-500 to-cyan-400 p-0.5 shadow-lg shadow-violet-500/20">
+          <div class="h-full w-full bg-zt-950 rounded-[10px] flex items-center justify-center">
+            <i data-lucide="shield-check" class="w-5 h-5 text-violet-400"></i>
+          </div>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-extrabold text-base tracking-tight text-white">ZTNA-GATEWAY</h1>
+            <span class="text-[10px] font-bold font-code uppercase px-2 py-0.5 rounded-full bg-violet-950/80 border border-violet-500/40 text-violet-300">
+              NIST SP 800-207
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 font-medium">Zero Trust Network Access & Identity-Aware Microsegmentation</p>
+        </div>
+      </div>
+
+      <!-- Live Infrastructure Badges -->
+      <div class="hidden md:flex items-center gap-2">
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zt-900 border border-zt-border text-xs font-code text-slate-300">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          Envoy PEP :8443
+        </div>
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zt-900 border border-zt-border text-xs font-code text-slate-300">
+          <span class="w-2 h-2 rounded-full bg-indigo-400"></span>
+          ExtAuthz PA :9001
+        </div>
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zt-900 border border-zt-border text-xs font-code text-slate-300">
+          <span class="w-2 h-2 rounded-full bg-violet-400"></span>
+          Keycloak IdP :8080
+        </div>
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zt-900 border border-zt-border text-xs font-code text-slate-300">
+          <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+          OPA PDP :8181
+        </div>
+      </div>
+
+      <!-- External Links -->
+      <div class="flex items-center gap-3">
+        <a href="https://github.com/ravishkarathnayaka/zero-trust-identity-aware-gateway" target="_blank" rel="noopener noreferrer" 
+           class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zt-900 hover:bg-zt-850 border border-zt-border text-xs font-semibold text-slate-200 transition-all hover:border-violet-500/50">
+          <i data-lucide="github" class="w-4 h-4"></i>
+          <span>GitHub</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========================================================================= -->
+  <!-- Main Container                                                            -->
+  <!-- ========================================================================= -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full space-y-8">
+
+    <!-- Top Metrics Banner -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div class="glass-card p-4 flex items-center justify-between border-l-4 border-l-violet-500">
+        <div>
+          <div class="text-xs text-slate-400 font-medium">Total Evaluations</div>
+          <div id="stat-total" class="text-2xl font-bold font-code text-white mt-1">4</div>
+          <div class="text-[11px] text-violet-400 mt-0.5">Continuous Policy Verification</div>
+        </div>
+        <div class="w-10 h-10 rounded-xl bg-violet-950/60 border border-violet-500/30 flex items-center justify-center text-violet-400">
+          <i data-lucide="activity" class="w-5 h-5"></i>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 flex items-center justify-between border-l-4 border-l-emerald-500">
+        <div>
+          <div class="text-xs text-slate-400 font-medium">Authorized (Allowed)</div>
+          <div id="stat-allowed" class="text-2xl font-bold font-code text-emerald-400 mt-1">2</div>
+          <div class="text-[11px] text-emerald-400/80 mt-0.5">Valid Identity + Posture</div>
+        </div>
+        <div class="w-10 h-10 rounded-xl bg-emerald-950/60 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+          <i data-lucide="shield-check" class="w-5 h-5"></i>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 flex items-center justify-between border-l-4 border-l-rose-500">
+        <div>
+          <div class="text-xs text-slate-400 font-medium">Terminated (Denied)</div>
+          <div id="stat-denied" class="text-2xl font-bold font-code text-rose-400 mt-1">2</div>
+          <div class="text-[11px] text-rose-400/80 mt-0.5">Posture / Role Violations</div>
+        </div>
+        <div class="w-10 h-10 rounded-xl bg-rose-950/60 border border-rose-500/30 flex items-center justify-center text-rose-400">
+          <i data-lucide="shield-alert" class="w-5 h-5"></i>
+        </div>
+      </div>
+
+      <div class="glass-card p-3 flex items-center justify-center relative">
+        <div class="w-full h-20">
+          <canvas id="decisionRatioChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="flex items-center border-b border-zt-border gap-2 overflow-x-auto pb-px">
+      <button data-tab="tab-simulator" class="tab-btn px-4 py-2.5 text-xs font-bold font-code rounded-t-lg border-b-2 border-violet-500 text-violet-400 bg-violet-950/40 flex items-center gap-2 transition-all">
+        <i data-lucide="play-circle" class="w-4 h-4"></i>
+        <span>1. Interactive ZTNA Simulator</span>
+      </button>
+      <button data-tab="tab-audit" class="tab-btn px-4 py-2.5 text-xs font-bold font-code rounded-t-lg border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2 transition-all">
+        <i data-lucide="file-text" class="w-4 h-4"></i>
+        <span>2. Security Audit Stream</span>
+      </button>
+      <button data-tab="tab-jwt" class="tab-btn px-4 py-2.5 text-xs font-bold font-code rounded-t-lg border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2 transition-all">
+        <i data-lucide="key" class="w-4 h-4"></i>
+        <span>3. Identity & JWT Inspector</span>
+      </button>
+      <button data-tab="tab-rego" class="tab-btn px-4 py-2.5 text-xs font-bold font-code rounded-t-lg border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2 transition-all">
+        <i data-lucide="code-2" class="w-4 h-4"></i>
+        <span>4. Rego Policies (OPA)</span>
+      </button>
+      <button data-tab="tab-nist" class="tab-btn px-4 py-2.5 text-xs font-bold font-code rounded-t-lg border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2 transition-all">
+        <i data-lucide="award" class="w-4 h-4"></i>
+        <span>5. NIST SP 800-207 Scorecard</span>
+      </button>
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- TAB 1: INTERACTIVE SIMULATOR                                            -->
+    <!-- ======================================================================= -->
+    <div id="tab-simulator" class="tab-content space-y-6">
+      
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left Column: Controls (Persona, Posture, Resource) -->
+        <div class="lg:col-span-6 space-y-6">
+          
+          <!-- Persona Selector -->
+          <div class="glass-card p-5 space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                <i data-lucide="user-check" class="w-4 h-4 text-violet-400"></i>
+                1. Select Identity Persona (Keycloak OIDC)
+              </h3>
+              <span class="text-xs text-slate-400 font-code">ztna-realm</span>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+              <!-- Alice -->
+              <div data-persona="alice" class="persona-card cursor-pointer p-3 rounded-xl border border-violet-500 bg-violet-950/30 hover:border-violet-400 transition-all">
+                <div class="flex items-center gap-2">
+                  <div class="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center font-bold text-white text-xs">A</div>
+                  <div class="font-bold text-xs text-white">Alice</div>
+                </div>
+                <div class="text-[11px] text-emerald-400 mt-1 font-medium">Finance Lead</div>
+                <div class="text-[10px] text-slate-400 font-code truncate">finance-admin</div>
+              </div>
+
+              <!-- Bob -->
+              <div data-persona="bob" class="persona-card cursor-pointer p-3 rounded-xl border border-zt-border bg-zt-900/50 hover:border-violet-500/50 transition-all">
+                <div class="flex items-center gap-2">
+                  <div class="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white text-xs">B</div>
+                  <div class="font-bold text-xs text-white">Bob</div>
+                </div>
+                <div class="text-[11px] text-indigo-400 mt-1 font-medium">Staff Engineer</div>
+                <div class="text-[10px] text-slate-400 font-code truncate">engineering</div>
+              </div>
+
+              <!-- Charlie -->
+              <div data-persona="charlie" class="persona-card cursor-pointer p-3 rounded-xl border border-zt-border bg-zt-900/50 hover:border-violet-500/50 transition-all">
+                <div class="flex items-center gap-2">
+                  <div class="w-7 h-7 rounded-lg bg-amber-600 flex items-center justify-center font-bold text-white text-xs">C</div>
+                  <div class="font-bold text-xs text-white">Charlie</div>
+                </div>
+                <div class="text-[11px] text-amber-400 mt-1 font-medium">Auditor</div>
+                <div class="text-[10px] text-slate-400 font-code truncate">auditor</div>
+              </div>
+
+              <!-- Eve -->
+              <div data-persona="eve" class="persona-card cursor-pointer p-3 rounded-xl border border-zt-border bg-zt-900/50 hover:border-violet-500/50 transition-all">
+                <div class="flex items-center gap-2">
+                  <div class="w-7 h-7 rounded-lg bg-purple-600 flex items-center justify-center font-bold text-white text-xs">E</div>
+                  <div class="font-bold text-xs text-white">Eve</div>
+                </div>
+                <div class="text-[11px] text-purple-400 mt-1 font-medium">Guest</div>
+                <div class="text-[10px] text-slate-400 font-code truncate">user (no roles)</div>
+              </div>
+
+              <!-- Anonymous -->
+              <div data-persona="anonymous" class="persona-card cursor-pointer p-3 rounded-xl border border-zt-border bg-zt-900/50 hover:border-violet-500/50 transition-all">
+                <div class="flex items-center gap-2">
+                  <div class="w-7 h-7 rounded-lg bg-slate-700 flex items-center justify-center font-bold text-white text-xs">?</div>
+                  <div class="font-bold text-xs text-white">Anonymous</div>
+                </div>
+                <div class="text-[11px] text-slate-400 mt-1 font-medium">Unauthenticated</div>
+                <div class="text-[10px] text-rose-400 font-code truncate">No Token</div>
+              </div>
+
+              <!-- Expired -->
+              <div data-persona="expired" class="persona-card cursor-pointer p-3 rounded-xl border border-zt-border bg-zt-900/50 hover:border-violet-500/50 transition-all">
+                <div class="flex items-center gap-2">
+                  <div class="w-7 h-7 rounded-lg bg-rose-700 flex items-center justify-center font-bold text-white text-xs">!</div>
+                  <div class="font-bold text-xs text-white">Expired</div>
+                </div>
+                <div class="text-[11px] text-rose-400 mt-1 font-medium">Expired Token</div>
+                <div class="text-[10px] text-rose-400 font-code truncate">exp &lt; now</div>
+              </div>
+            </div>
+
+            <!-- Active Identity Details -->
+            <div id="active-persona-display" class="p-3 rounded-lg bg-zt-950/70 border border-zt-border">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Device Posture Signals -->
+          <div class="glass-card p-5 space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                <i data-lucide="laptop" class="w-4 h-4 text-cyan-400"></i>
+                2. Real-Time Device Posture Signals (X-Device-Posture)
+              </h3>
+              <span class="text-xs text-cyan-400 font-code">Telemetry</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <!-- Disk Encryption -->
+              <div class="p-3 rounded-lg bg-zt-950/70 border border-zt-border flex items-center justify-between">
+                <div>
+                  <div class="text-xs font-semibold text-white">Disk Encryption</div>
+                  <div class="text-[11px] text-slate-400">LUKS / BitLocker / FileVault</div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" id="posture-encrypted" class="sr-only peer" checked>
+                  <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                </label>
+              </div>
+
+              <!-- Corporate MDM Managed -->
+              <div class="p-3 rounded-lg bg-zt-950/70 border border-zt-border flex items-center justify-between">
+                <div>
+                  <div class="text-xs font-semibold text-white">Corporate MDM</div>
+                  <div class="text-[11px] text-slate-400">Enterprise Managed Device</div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" id="posture-mdm" class="sr-only peer" checked>
+                  <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                </label>
+              </div>
+
+              <!-- Operating System -->
+              <div class="p-3 rounded-lg bg-zt-950/70 border border-zt-border space-y-1.5">
+                <label for="posture-os" class="text-xs font-semibold text-white block">Operating System</label>
+                <select id="posture-os" class="w-full text-xs font-code bg-zt-900 border border-zt-border rounded-md px-2.5 py-1.5 text-slate-200 focus:border-violet-500 focus:outline-none">
+                  <option value="linux" selected>Linux (Ubuntu / Fedora Enterprise)</option>
+                  <option value="darwin">macOS (Darwin 23.x)</option>
+                  <option value="windows_11">Windows 11 Enterprise</option>
+                  <option value="unknown_os">Untrusted / Jailbroken OS</option>
+                </select>
+              </div>
+
+              <!-- Patch Level -->
+              <div class="p-3 rounded-lg bg-zt-950/70 border border-zt-border space-y-1.5">
+                <label for="posture-patch" class="text-xs font-semibold text-white block">OS Patch Compliance</label>
+                <select id="posture-patch" class="w-full text-xs font-code bg-zt-900 border border-zt-border rounded-md px-2.5 py-1.5 text-slate-200 focus:border-violet-500 focus:outline-none">
+                  <option value="current" selected>Current (Within 14-day SLA)</option>
+                  <option value="outdated">Outdated (&gt; 30 days unpatched)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Target Microservice Endpoint -->
+          <div class="glass-card p-5 space-y-3">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <i data-lucide="target" class="w-4 h-4 text-emerald-400"></i>
+              3. Target Microservice & Endpoint
+            </h3>
+
+            <select id="target-endpoint-select" class="w-full text-xs font-code bg-zt-950 border border-zt-border rounded-lg px-3 py-2 text-slate-200 focus:border-violet-500 focus:outline-none">
+              <option value="finance_ledger">GET /api/finance/ledger (Finance Ledger - Tier 1 High Sensitivity)</option>
+              <option value="finance_payout">POST /api/finance/payout (Finance Wire Payout - Tier 1 Mutation)</option>
+              <option value="dev_repos">GET /api/dev/repositories (Developer Portal Repos - Tier 2 Dev)</option>
+              <option value="dev_deploys">GET /api/dev/deployments (K8s Cluster Deployments - Tier 2 Dev)</option>
+              <option value="healthz">GET /healthz (Envoy PEP Health Check - Public Endpoint)</option>
+            </select>
+          </div>
+
+          <!-- Run Simulation CTA -->
+          <button id="btn-run-simulation" class="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white font-bold text-sm shadow-lg shadow-violet-500/25 flex items-center justify-center gap-2 transition-all active:scale-[0.99]">
+            <i data-lucide="play" class="w-4 h-4 fill-white"></i>
+            <span>Send Request Through Envoy PEP Gateway</span>
+          </button>
+        </div>
+
+        <!-- Right Column: Animated Sequence & Live Decision Report -->
+        <div class="lg:col-span-6 space-y-6">
+
+          <!-- Architectural Flow Diagram (NIST SP 800-207) -->
+          <div class="glass-card p-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-400 font-code">
+                Request Lifecycle Sequence
+              </span>
+              <span class="text-xs text-violet-400 font-code">ext_authz filter</span>
+            </div>
+
+            <!-- Visual Sequence Path -->
+            <div class="relative py-2">
+              <div id="flow-indicator" class="h-1 bg-slate-800 rounded-full w-full mb-4"></div>
+              
+              <div class="grid grid-cols-5 gap-1 text-center font-code text-[11px]">
+                <div class="p-2 rounded-lg bg-zt-950/80 border border-zt-border">
+                  <div class="font-bold text-white">Client</div>
+                  <div class="text-[9px] text-slate-400">Device</div>
+                </div>
+                <div class="p-2 rounded-lg bg-zt-950/80 border border-violet-500/40 glow-violet">
+                  <div class="font-bold text-violet-400">Envoy</div>
+                  <div class="text-[9px] text-slate-400">PEP :8443</div>
+                </div>
+                <div class="p-2 rounded-lg bg-zt-950/80 border border-indigo-500/40">
+                  <div class="font-bold text-indigo-400">ExtAuthz</div>
+                  <div class="text-[9px] text-slate-400">PA :9001</div>
+                </div>
+                <div class="p-2 rounded-lg bg-zt-950/80 border border-cyan-500/40">
+                  <div class="font-bold text-cyan-400">OPA / IdP</div>
+                  <div class="text-[9px] text-slate-400">PDP Engine</div>
+                </div>
+                <div class="p-2 rounded-lg bg-zt-950/80 border border-emerald-500/40">
+                  <div class="font-bold text-emerald-400">Backend</div>
+                  <div class="text-[9px] text-slate-400">Internal</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Real-Time Decision Box -->
+          <div id="decision-result-container">
+            <div class="glass-card p-8 text-center space-y-3 border-dashed border-slate-700">
+              <div class="w-12 h-12 rounded-2xl bg-violet-950/60 border border-violet-500/30 flex items-center justify-center text-violet-400 mx-auto">
+                <i data-lucide="shield" class="w-6 h-6"></i>
+              </div>
+              <h4 class="text-sm font-semibold text-white">Ready for Zero Trust Evaluation</h4>
+              <p class="text-xs text-slate-400 max-w-sm mx-auto">
+                Select your persona credentials, toggle device posture attributes, and click "Send Request Through Envoy PEP" to observe real-time policy decisions.
+              </p>
+            </div>
+          </div>
+
+          <!-- Dynamic cURL Command Box -->
+          <div class="glass-card p-4 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-slate-400 uppercase tracking-wider font-code flex items-center gap-1.5">
+                <i data-lucide="terminal" class="w-3.5 h-3.5 text-cyan-400"></i> Equivalent cURL Command:
+              </span>
+              <button onclick="copyToClipboard('curl-preview-code')" class="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1">
+                <i data-lucide="copy" class="w-3 h-3"></i> Copy
+              </button>
+            </div>
+            <pre id="curl-preview-code" class="p-3 rounded-lg bg-slate-950 font-code text-[11px] text-cyan-300 overflow-x-auto border border-slate-800">
+curl -k -i -X GET "https://localhost:8443/api/finance/ledger" \
+  -H "Authorization: Bearer <ALICE_JWT_TOKEN>" \
+  -H "X-Device-Posture: encrypted=true,os=linux,patch_level=current,corporate_managed=true"
+            </pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- TAB 2: LIVE SECURITY AUDIT STREAM                                       -->
+    <!-- ======================================================================= -->
+    <div id="tab-audit" class="tab-content hidden space-y-4">
+      <div class="glass-card p-5 space-y-4">
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+              <i data-lucide="clipboard-list" class="w-5 h-5 text-indigo-400"></i>
+              Live Security Decision Audit Stream
+            </h3>
+            <p class="text-xs text-slate-400">NIST SP 800-207 Tenet 7: Continuous asset and transaction telemetry</p>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button onclick="renderAuditLogs('ALL')" class="px-3 py-1 rounded-md text-xs font-code bg-violet-900/40 text-violet-300 border border-violet-500/30 hover:bg-violet-900/60">ALL</button>
+            <button onclick="renderAuditLogs('ALLOW')" class="px-3 py-1 rounded-md text-xs font-code bg-emerald-950/50 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-950">ALLOWED</button>
+            <button onclick="renderAuditLogs('DENY')" class="px-3 py-1 rounded-md text-xs font-code bg-rose-950/50 text-rose-400 border border-rose-500/30 hover:bg-rose-950">DENIED</button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left">
+            <thead>
+              <tr class="border-b border-slate-800 text-[11px] font-code uppercase text-slate-400">
+                <th class="py-2 px-3">Timestamp</th>
+                <th class="py-2 px-3">Subject</th>
+                <th class="py-2 px-3">Client IP</th>
+                <th class="py-2 px-3">Target Resource</th>
+                <th class="py-2 px-3">Decision</th>
+                <th class="py-2 px-3">Posture / Violation Reason</th>
+              </tr>
+            </thead>
+            <tbody id="audit-logs-tbody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- TAB 3: IDENTITY & JWT CLAIMS INSPECTOR                                  -->
+    <!-- ======================================================================= -->
+    <div id="tab-jwt" class="tab-content hidden space-y-6">
+      <div class="glass-card p-6 space-y-4">
+        <div>
+          <h3 class="text-base font-bold text-white flex items-center gap-2">
+            <i data-lucide="key-round" class="w-5 h-5 text-violet-400"></i>
+            Keycloak OIDC Decoded JWT Inspector
+          </h3>
+          <p class="text-xs text-slate-400">Inspect cryptographically signed RS256 token claims issued by Keycloak</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="space-y-3">
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider font-code">
+              Decoded Token Claims:
+            </div>
+            <pre id="jwt-claims-display" class="p-4 rounded-xl bg-slate-950 font-code text-xs text-indigo-300 border border-slate-800 overflow-x-auto max-h-96"></pre>
+          </div>
+
+          <div class="space-y-4 text-xs text-slate-300">
+            <div class="p-4 rounded-xl bg-zt-950/60 border border-zt-border space-y-2">
+              <h4 class="font-bold text-white text-sm flex items-center gap-2">
+                <i data-lucide="shield" class="w-4 h-4 text-violet-400"></i>
+                NIST SP 800-207 Identity Verifications:
+              </h4>
+              <ul class="list-disc list-inside space-y-1.5 text-slate-400">
+                <li><strong class="text-slate-200">Signature Algorithm</strong>: RS256 using Keycloak Realm asymmetric RSA private key.</li>
+                <li><strong class="text-slate-200">Issuer (`iss`)</strong>: <code class="text-indigo-300 font-code">http://keycloak:8080/realms/ztna-realm</code></li>
+                <li><strong class="text-slate-200">Subject (`sub`)</strong>: Immutable UUID representing enterprise account.</li>
+                <li><strong class="text-slate-200">Roles Mapping</strong>: Extracted from <code class="text-indigo-300 font-code">realm_access.roles</code> and passed to OPA PDP.</li>
+                <li><strong class="text-slate-200">Strict Lifespan</strong>: 3600 seconds token lifespan; expired tokens are immediately rejected with HTTP 401.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- TAB 4: REGO POLICY INSPECTOR                                            -->
+    <!-- ======================================================================= -->
+    <div id="tab-rego" class="tab-content hidden space-y-6">
+      <div class="glass-card p-6 space-y-4">
+        <div>
+          <h3 class="text-base font-bold text-white flex items-center gap-2">
+            <i data-lucide="shield" class="w-5 h-5 text-cyan-400"></i>
+            Declarative Policy Decision Point (OPA Rego v1)
+          </h3>
+          <p class="text-xs text-slate-400">Production-grade Rego rules governing microsegmentation and device posture</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <!-- rbac.rego -->
+          <div class="p-4 rounded-xl bg-zt-950/80 border border-zt-border space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-xs text-white font-code">rbac.rego</span>
+              <span class="text-[10px] font-bold text-indigo-400 font-code">RBAC Logic</span>
+            </div>
+            <p class="text-xs text-slate-400">Microsegments <code class="text-violet-300 font-code">/api/finance/*</code> to <code class="text-indigo-300 font-code">finance-admin</code> and <code class="text-violet-300 font-code">/api/dev/*</code> to <code class="text-indigo-300 font-code">engineering</code>.</p>
+            <pre class="p-2.5 rounded bg-slate-950 text-[10px] font-code text-indigo-200 overflow-x-auto max-h-48 border border-slate-800">
+allow if {
+    is_finance_path
+    input.request.method == "GET"
+    has_finance_role
+}
+allow if {
+    is_dev_path
+    has_engineering_role
+}</pre>
+          </div>
+
+          <!-- posture.rego -->
+          <div class="p-4 rounded-xl bg-zt-950/80 border border-zt-border space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-xs text-white font-code">posture.rego</span>
+              <span class="text-[10px] font-bold text-cyan-400 font-code">Device Posture</span>
+            </div>
+            <p class="text-xs text-slate-400">Evaluates disk encryption, corporate MDM management, approved OS, and 14-day patch levels.</p>
+            <pre class="p-2.5 rounded bg-slate-950 text-[10px] font-code text-cyan-200 overflow-x-auto max-h-48 border border-slate-800">
+allow if {
+    is_high_sensitivity
+    is_encrypted
+    is_patched
+    is_corporate_managed
+    is_valid_os
+}</pre>
+          </div>
+
+          <!-- main.rego -->
+          <div class="p-4 rounded-xl bg-zt-950/80 border border-zt-border space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-xs text-white font-code">main.rego</span>
+              <span class="text-[10px] font-bold text-emerald-400 font-code">Master Decision</span>
+            </div>
+            <p class="text-xs text-slate-400">Root decision synthesizer returning boolean allow, violations, and downstream injected headers.</p>
+            <pre class="p-2.5 rounded bg-slate-950 text-[10px] font-code text-emerald-200 overflow-x-auto max-h-48 border border-slate-800">
+allow if {
+    is_authenticated
+    rbac.allow
+    posture.allow
+}</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- TAB 5: NIST SP 800-207 SCORECARD                                        -->
+    <!-- ======================================================================= -->
+    <div id="tab-nist" class="tab-content hidden space-y-6">
+      <div class="glass-card p-6 space-y-6">
+        <div>
+          <h3 class="text-base font-bold text-white flex items-center gap-2">
+            <i data-lucide="check-check" class="w-5 h-5 text-emerald-400"></i>
+            NIST SP 800-207 Zero Trust Architecture Compliance Scorecard
+          </h3>
+          <p class="text-xs text-slate-400">Alignment across all 7 core tenets defined by the National Institute of Standards and Technology</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          <!-- Tenet 1 -->
+          <div class="p-4 rounded-xl bg-zt-950/70 border border-zt-border space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-white">Tenet 1: All Data Sources & Services are Resources</span>
+              <span class="text-[10px] font-code font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30">COMPLIANT</span>
+            </div>
+            <p class="text-slate-400">Every microservice endpoint (<code class="text-violet-300 font-code">/api/finance/*</code>, <code class="text-violet-300 font-code">/api/dev/*</code>) is explicitly protected with zero implicit access.</p>
+          </div>
+
+          <!-- Tenet 2 -->
+          <div class="p-4 rounded-xl bg-zt-950/70 border border-zt-border space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-white">Tenet 2: Secured Communications Regardless of Location</span>
+              <span class="text-[10px] font-code font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30">COMPLIANT</span>
+            </div>
+            <p class="text-slate-400">Ingress terminates on HTTPS port 8443 via Envoy with PKI certificates; backends reside on internal isolated networks.</p>
+          </div>
+
+          <!-- Tenet 3 -->
+          <div class="p-4 rounded-xl bg-zt-950/70 border border-zt-border space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-white">Tenet 3: Access Granted on a Per-Session Basis</span>
+              <span class="text-[10px] font-code font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30">COMPLIANT</span>
+            </div>
+            <p class="text-slate-400">No perimeter VPN session trust. Every single HTTP transaction is re-evaluated by ExtAuthz + OPA.</p>
+          </div>
+
+          <!-- Tenet 4 -->
+          <div class="p-4 rounded-xl bg-zt-950/70 border border-zt-border space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-white">Tenet 4: Dynamic Policy-Driven Authorization</span>
+              <span class="text-[10px] font-code font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30">COMPLIANT</span>
+            </div>
+            <p class="text-slate-400">Dynamic authorization combining user roles, device disk encryption, OS integrity, and target sensitivity tier.</p>
+          </div>
+
+          <!-- Tenet 5 -->
+          <div class="p-4 rounded-xl bg-zt-950/70 border border-zt-border space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-white">Tenet 5: Continuous Asset Integrity & Posture Monitoring</span>
+              <span class="text-[10px] font-code font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30">COMPLIANT</span>
+            </div>
+            <p class="text-slate-400">Unencrypted disks or outdated operating systems are conditionally rejected with immediate 403 Forbidden.</p>
+          </div>
+
+          <!-- Tenet 6 -->
+          <div class="p-4 rounded-xl bg-zt-950/70 border border-zt-border space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-white">Tenet 6: Strict Dynamic Enforcement Before Access</span>
+              <span class="text-[10px] font-code font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30">COMPLIANT</span>
+            </div>
+            <p class="text-slate-400">Envoy configured with <code class="text-rose-300 font-code">failure_mode_allow: false</code>. If OPA or ExtAuthz is unavailable, the gateway strictly fails closed.</p>
+          </div>
+
+          <!-- Tenet 7 -->
+          <div class="p-4 rounded-xl bg-zt-950/70 border border-zt-border space-y-1.5 md:col-span-2">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-white">Tenet 7: Continuous Telemetry & Asset State Collection</span>
+              <span class="text-[10px] font-code font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30">COMPLIANT</span>
+            </div>
+            <p class="text-slate-400">Every authorization decision produces structured JSON audit logs recording subject, device posture, action, resource, and policy violations.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- Footer                                                                    -->
+  <!-- ========================================================================= -->
+  <footer class="border-t border-zt-border bg-zt-950 py-6 text-center text-xs text-slate-500">
+    <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+      <div>
+        NIST SP 800-207 Zero Trust Network Access Architecture &bull; MIT License
+      </div>
+      <div class="flex items-center gap-4">
+        <span>Envoy Proxy v1.30</span>
+        <span>Keycloak 24</span>
+        <span>Open Policy Agent v1.0</span>
+        <span class="text-violet-400 font-semibold">Vercel Ready</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

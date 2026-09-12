@@ -5,6 +5,7 @@
 [![Security Scan](https://github.com/ravishkarathnayaka/zero-trust-identity-aware-gateway/actions/workflows/security-scan.yml/badge.svg)](https://github.com/ravishkarathnayaka/zero-trust-identity-aware-gateway/actions/workflows/security-scan.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![NIST SP 800-207](https://img.shields.io/badge/Compliance-NIST%20SP%20800--207-blue.svg)](https://csrc.nist.gov/publications/detail/sp/800-207/final)
+[![Vercel Deployment](https://img.shields.io/badge/Vercel-Deployed%20Web%20Portal-black?logo=vercel)](https://vercel.com)
 [![Open Policy Agent](https://img.shields.io/badge/Policy%20Engine-OPA%20Rego%20v1-green.svg)](https://www.openpolicyagent.org/)
 [![Envoy Proxy](https://img.shields.io/badge/PEP-Envoy%20Proxy%20v1.30-orange.svg)](https://www.envoyproxy.io/)
 
@@ -457,6 +458,62 @@ For every access attempt, the Policy Administrator emits a structured JSON audit
 
 ---
 
+## Interactive Frontend Web Portal & Vercel Hosting
+
+This repository includes a standalone, high-performance interactive web portal designed with a distinct **Quantum Violet & Electric Indigo** theme (`web/`) to showcase the architecture and let users experiment with zero trust policy evaluations in real time.
+
+### Key Portal Features:
+1. **Interactive ZTNA Policy Simulator**:
+   - Select identity personas (Alice, Bob, Charlie, Eve, Anonymous, Expired Token).
+   - Toggle real-time device posture switches (Disk Encryption, Operating System, Patch Level, MDM Management).
+   - Pick target microservices (`/api/finance/ledger`, `/api/dev/repositories`, etc.).
+   - Send simulated requests through the Envoy PEP and observe the animated lifecycle flow, HTTP status codes, injected downstream headers, and mock service payloads.
+2. **Live Security Audit Stream**:
+   - Filterable real-time table displaying continuous authorization decisions, client IPs, posture data, and policy violation logs.
+3. **Decoded JWT & OIDC Inspector**:
+   - Inspects cryptographically signed RS256 token claims issued by Keycloak.
+4. **Rego Policy Viewer**:
+   - Interactive viewer for `rbac.rego`, `posture.rego`, and `main.rego` with highlighted rules and NIST tenet explanations.
+5. **NIST SP 800-207 Scorecard**:
+   - Detailed status mapping across all 7 core tenets.
+6. **cURL Command Generator**:
+   - Automatically builds ready-to-run curl commands matching the active simulator settings.
+
+### Running the Web Portal Locally:
+```bash
+# Using Python built-in HTTP server:
+python -m http.server 3000 --directory web
+
+# Open in browser:
+http://localhost:3000
+```
+
+### Hosting on Vercel:
+The project includes a root [`vercel.json`](file:///f:/Projects/zero-trust-identity-aware-gateway/vercel.json) pre-configured with:
+```json
+{
+  "version": 2,
+  "cleanUrls": true,
+  "outputDirectory": "web"
+}
+```
+
+#### Option A: Deploy via Vercel Dashboard (1-Click)
+1. Go to [Vercel](https://vercel.com) and click **"Add New Project"**.
+2. Import your GitHub repository: `ravishkarathnayaka/zero-trust-identity-aware-gateway`.
+3. Vercel automatically detects `vercel.json` and sets the output directory to `web/`.
+4. Click **Deploy**. Your interactive showcase portal is live with a global CDN URL!
+
+#### Option B: Deploy via Vercel CLI
+```bash
+npm install -g vercel
+vercel login
+vercel --prod
+```
+
+---
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
