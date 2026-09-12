@@ -1,6 +1,7 @@
 /**
  * Zero Trust Network Access (ZTNA) Gateway Showcase Engine
  * NIST SP 800-207 Interactive Policy Evaluation & Telemetry Console
+ * Supports Clean Enterprise Light Theme (Default) and High-Tech Dark Mode
  */
 
 // =============================================================================
@@ -246,7 +247,6 @@ let decisionChartInstance = null;
 function evaluateZeroTrustPolicy(persona, posture, endpoint) {
   const isPublic = endpoint.path === "/healthz" || endpoint.path.startsWith("/api/public");
   
-  // Public bypasses all auth & posture
   if (isPublic) {
     return {
       allowed: true,
@@ -342,7 +342,6 @@ function evaluateZeroTrustPolicy(persona, posture, endpoint) {
     violations.push("Device Posture Violation: Unsupported or untrusted operating system");
   }
 
-  // High-sensitivity endpoints require corporate MDM management
   if (endpoint.tier === "HIGH_SENSITIVITY" && !posture.corporate_managed) {
     postureAllowed = false;
     violations.push("Device Posture Violation: Unmanaged or non-corporate device for Tier-1 API");
@@ -395,6 +394,9 @@ function evaluateZeroTrustPolicy(persona, posture, endpoint) {
 // DOM Manipulation & Event Handlers
 // =============================================================================
 document.addEventListener("DOMContentLoaded", () => {
+  // Initialize Theme (Default: Light Mode)
+  initTheme();
+
   // Initialize Lucide Icons
   if (window.lucide) {
     lucide.createIcons();
@@ -404,6 +406,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initChart();
 
   // Setup Event Listeners
+  setupThemeToggle();
   setupPersonaSelectors();
   setupPostureSwitches();
   setupEndpointSelectors();
@@ -416,12 +419,72 @@ document.addEventListener("DOMContentLoaded", () => {
   renderAuditLogs();
 });
 
+// =============================================================================
+// Theme Management (Default Light Mode / Toggle Dark Mode)
+// =============================================================================
+function initTheme() {
+  const savedTheme = localStorage.getItem("ztna-theme");
+  const html = document.documentElement;
+
+  if (savedTheme === "dark") {
+    html.classList.add("dark");
+    updateThemeButtonUI("dark");
+  } else {
+    html.classList.remove("dark");
+    updateThemeButtonUI("light");
+  }
+}
+
+function setupThemeToggle() {
+  const btn = document.getElementById("theme-toggle-btn");
+  if (!btn) return;
+
+  btn.addEventListener("click", () => {
+    const html = document.documentElement;
+    const isDark = html.classList.contains("dark");
+
+    if (isDark) {
+      html.classList.remove("dark");
+      localStorage.setItem("ztna-theme", "light");
+      updateThemeButtonUI("light");
+    } else {
+      html.classList.add("dark");
+      localStorage.setItem("ztna-theme", "dark");
+      updateThemeButtonUI("dark");
+    }
+
+    // Refresh icons and chart
+    if (window.lucide) lucide.createIcons();
+    updateChartTheme();
+  });
+}
+
+function updateThemeButtonUI(theme) {
+  const icon = document.getElementById("theme-icon");
+  const text = document.getElementById("theme-text");
+  if (!icon || !text) return;
+
+  if (theme === "dark") {
+    icon.setAttribute("data-lucide", "sun");
+    text.textContent = "Light";
+  } else {
+    icon.setAttribute("data-lucide", "moon");
+    text.textContent = "Dark";
+  }
+
+  if (window.lucide) lucide.createIcons();
+}
+
 function setupPersonaSelectors() {
   const personaCards = document.querySelectorAll(".persona-card");
   personaCards.forEach(card => {
     card.addEventListener("click", () => {
-      personaCards.forEach(c => c.classList.remove("border-violet-500", "bg-violet-950/30"));
-      card.classList.add("border-violet-500", "bg-violet-950/30");
+      personaCards.forEach(c => {
+        c.classList.remove("border-2", "border-indigo-600", "bg-indigo-50/60", "dark:bg-violet-950/30");
+        c.classList.add("border", "border-slate-200", "dark:border-zt-border", "bg-slate-50/50", "dark:bg-zt-900/50");
+      });
+      card.classList.remove("border", "border-slate-200", "dark:border-zt-border", "bg-slate-50/50", "dark:bg-zt-900/50");
+      card.classList.add("border-2", "border-indigo-600", "bg-indigo-50/60", "dark:bg-violet-950/30");
       simulatorState.personaKey = card.dataset.persona;
       updatePersonaUI();
       updateCurlPreview();
@@ -440,20 +503,19 @@ function updatePersonaUI() {
         ${p.name.charAt(0)}
       </div>
       <div>
-        <div class="font-semibold text-white text-sm flex items-center gap-2">
+        <div class="font-semibold text-slate-900 dark:text-white text-sm flex items-center gap-2">
           ${p.name}
-          <span class="text-xs px-2 py-0.5 rounded-full bg-violet-900/60 border border-violet-500/30 text-violet-300">
+          <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-violet-900/60 border border-indigo-200 dark:border-violet-500/30 text-indigo-700 dark:text-violet-300 font-medium">
             ${p.department}
           </span>
         </div>
-        <div class="text-xs text-slate-400 font-code mt-0.5">
-          Roles: <span class="text-indigo-300">${p.roles.length ? p.roles.join(", ") : "none"}</span>
+        <div class="text-xs text-slate-500 dark:text-slate-400 font-code mt-0.5">
+          Roles: <span class="text-indigo-600 dark:text-indigo-300 font-semibold">${p.roles.length ? p.roles.join(", ") : "none"}</span>
         </div>
       </div>
     </div>
   `;
 
-  // Update Decoded Token Viewer
   updateTokenViewer(p);
 }
 
@@ -507,12 +569,10 @@ function setupSimulationButton() {
   if (!btn) return;
 
   btn.addEventListener("click", () => {
-    // Run Evaluation
     const persona = PERSONAS[simulatorState.personaKey];
     const posture = simulatorState.devicePosture;
     const endpoint = ENDPOINTS[simulatorState.endpointKey];
 
-    // Animate flow line
     const flowLine = document.getElementById("flow-indicator");
     if (flowLine) {
       flowLine.classList.add("flow-gradient");
@@ -521,13 +581,11 @@ function setupSimulationButton() {
 
     const decision = evaluateZeroTrustPolicy(persona, posture, endpoint);
 
-    // Update Stats
     stats.totalEvaluations++;
     if (decision.allowed) stats.allowed++;
     else stats.denied++;
     updateStatsDisplay();
 
-    // Create Audit Log Entry
     const newLog = {
       id: `AUD-${Math.floor(1000 + Math.random() * 9000)}`,
       timestamp: new Date().toLocaleTimeString() + " UTC",
@@ -544,7 +602,6 @@ function setupSimulationButton() {
     if (auditLogs.length > 25) auditLogs.pop();
     renderAuditLogs();
 
-    // Render Result
     renderDecisionResult(decision, persona, endpoint, posture);
   });
 }
@@ -554,18 +611,22 @@ function renderDecisionResult(decision, persona, endpoint, posture) {
   if (!container) return;
 
   const isAllowed = decision.allowed;
-  const statusColor = isAllowed ? "text-emerald-400" : (decision.statusCode === 401 ? "text-amber-400" : "text-rose-400");
-  const bgGlow = isAllowed ? "glow-emerald border-emerald-500/30" : (decision.statusCode === 401 ? "glow-indigo border-amber-500/30" : "glow-rose border-rose-500/30");
-  const badgeBg = isAllowed ? "bg-emerald-950/80 text-emerald-300 border-emerald-500/40" : "bg-rose-950/80 text-rose-300 border-rose-500/40";
+  const borderStyle = isAllowed 
+    ? "border-emerald-300 dark:border-emerald-500/40 glow-emerald" 
+    : (decision.statusCode === 401 ? "border-amber-300 dark:border-amber-500/40 glow-indigo" : "border-rose-300 dark:border-rose-500/40 glow-rose");
+
+  const badgeBg = isAllowed 
+    ? "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-300 dark:border-emerald-500/40" 
+    : "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/80 dark:text-rose-300 dark:border-rose-500/40";
 
   let violationsHtml = "";
   if (decision.violations.length > 0) {
     violationsHtml = `
-      <div class="mt-4 p-3 rounded-lg bg-rose-950/30 border border-rose-500/30">
-        <div class="text-xs font-semibold text-rose-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-          <i data-lucide="shield-alert" class="w-4 h-4"></i> NIST SP 800-207 Policy Violations Detected:
+      <div class="mt-4 p-3.5 rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-500/30">
+        <div class="text-xs font-semibold text-rose-700 dark:text-rose-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+          <i data-lucide="shield-alert" class="w-4 h-4 text-rose-600"></i> NIST SP 800-207 Policy Violations:
         </div>
-        <ul class="list-disc list-inside space-y-1 text-xs text-rose-200">
+        <ul class="list-disc list-inside space-y-1 text-xs text-rose-800 dark:text-rose-200">
           ${decision.violations.map(v => `<li>${v}</li>`).join("")}
         </ul>
       </div>
@@ -575,23 +636,23 @@ function renderDecisionResult(decision, persona, endpoint, posture) {
   let headersHtml = "";
   if (Object.keys(decision.headers).length > 0) {
     headersHtml = `
-      <div class="mt-4 p-3 rounded-lg bg-slate-950/70 border border-slate-800">
-        <div class="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-1.5">
+      <div class="mt-4 p-3.5 rounded-lg bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800">
+        <div class="text-xs font-semibold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider mb-1.5">
           Injected Envoy Downstream Headers:
         </div>
-        <pre class="font-code text-xs text-slate-300 overflow-x-auto">${Object.entries(decision.headers).map(([k, v]) => `${k}: ${v}`).join("\n")}</pre>
+        <pre class="font-code text-xs text-slate-800 dark:text-slate-300 overflow-x-auto">${Object.entries(decision.headers).map(([k, v]) => `${k}: ${v}`).join("\n")}</pre>
       </div>
     `;
   }
 
   container.innerHTML = `
-    <div class="glass-card p-5 border ${bgGlow} transition-all duration-300">
-      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+    <div class="custom-card p-5 ${borderStyle} transition-all duration-300">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
         <div class="flex items-center gap-2.5">
           <span class="text-xs font-bold font-code px-2.5 py-1 rounded-md border ${badgeBg}">
             HTTP ${decision.statusCode} ${isAllowed ? "ALLOWED" : "BLOCKED"}
           </span>
-          <span class="text-xs text-slate-400 font-code">
+          <span class="text-xs text-slate-600 dark:text-slate-400 font-code font-semibold">
             ${endpoint.method} ${endpoint.path}
           </span>
         </div>
@@ -601,10 +662,10 @@ function renderDecisionResult(decision, persona, endpoint, posture) {
       </div>
 
       <div class="mt-4">
-        <h4 class="text-sm font-semibold text-white flex items-center gap-2">
-          ${isAllowed ? '<i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i> Access Authorized by Envoy PEP' : '<i data-lucide="x-circle" class="w-4 h-4 text-rose-400"></i> Request Rejected by Policy Decision Point'}
+        <h4 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          ${isAllowed ? '<i data-lucide="check-circle" class="w-4 h-4 text-emerald-600"></i> Access Authorized by Envoy PEP' : '<i data-lucide="x-circle" class="w-4 h-4 text-rose-600"></i> Request Rejected by Policy Decision Point'}
         </h4>
-        <p class="text-xs text-slate-400 mt-1">
+        <p class="text-xs text-slate-600 dark:text-slate-400 mt-1">
           ${isAllowed ? 'User identity, roles, and device posture fully satisfy zero trust policies.' : 'Access denied: Policy Enforcement Point terminated request before reaching internal microservice.'}
         </p>
       </div>
@@ -613,10 +674,10 @@ function renderDecisionResult(decision, persona, endpoint, posture) {
       ${headersHtml}
 
       <div class="mt-4">
-        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+        <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
           Microservice Response Payload:
         </div>
-        <pre class="p-3 rounded-lg bg-slate-950 font-code text-xs text-slate-200 overflow-x-auto max-h-48 border border-slate-800/80">${JSON.stringify(decision.responseBody, null, 2)}</pre>
+        <pre class="p-3 rounded-lg dark-code-block font-code text-xs overflow-x-auto max-h-48 shadow-inner">${JSON.stringify(decision.responseBody, null, 2)}</pre>
       </div>
     </div>
   `;
@@ -678,18 +739,18 @@ function renderAuditLogs(filter = "ALL") {
   tbody.innerHTML = filtered.map(log => {
     const isAllow = log.decision === "ALLOW";
     const badge = isAllow 
-      ? '<span class="px-2 py-0.5 rounded text-[11px] font-code font-bold bg-emerald-950 text-emerald-400 border border-emerald-500/30">ALLOW</span>'
-      : '<span class="px-2 py-0.5 rounded text-[11px] font-code font-bold bg-rose-950 text-rose-400 border border-rose-500/30">DENY</span>';
+      ? '<span class="px-2 py-0.5 rounded text-[11px] font-code font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-500/30">ALLOW</span>'
+      : '<span class="px-2 py-0.5 rounded text-[11px] font-code font-bold bg-rose-100 text-rose-800 border border-rose-300 dark:bg-rose-950 dark:text-rose-400 dark:border-rose-500/30">DENY</span>';
 
     return `
-      <tr class="border-b border-slate-800/60 hover:bg-slate-900/40 text-xs font-code transition-colors">
-        <td class="py-2.5 px-3 text-slate-400">${log.timestamp}</td>
-        <td class="py-2.5 px-3 text-white font-semibold">${log.user}</td>
-        <td class="py-2.5 px-3 text-slate-400">${log.ip}</td>
-        <td class="py-2.5 px-3 text-indigo-300">${log.method} ${log.resource}</td>
+      <tr class="border-b border-slate-200 dark:border-slate-800/60 hover:bg-slate-100/70 dark:hover:bg-slate-900/40 text-xs font-code transition-colors">
+        <td class="py-2.5 px-3 text-slate-500 dark:text-slate-400">${log.timestamp}</td>
+        <td class="py-2.5 px-3 text-slate-900 dark:text-white font-semibold">${log.user}</td>
+        <td class="py-2.5 px-3 text-slate-500 dark:text-slate-400">${log.ip}</td>
+        <td class="py-2.5 px-3 text-indigo-600 dark:text-indigo-300">${log.method} ${log.resource}</td>
         <td class="py-2.5 px-3">${badge}</td>
-        <td class="py-2.5 px-3 text-slate-400 truncate max-w-xs" title="${log.violations.length ? log.violations.join('; ') : log.posture}">
-          ${log.violations.length ? `<span class="text-rose-400">${log.violations[0]}</span>` : log.posture}
+        <td class="py-2.5 px-3 text-slate-500 dark:text-slate-400 truncate max-w-xs" title="${log.violations.length ? log.violations.join('; ') : log.posture}">
+          ${log.violations.length ? `<span class="text-rose-600 dark:text-rose-400 font-semibold">${log.violations[0]}</span>` : log.posture}
         </td>
       </tr>
     `;
@@ -715,14 +776,17 @@ function initChart() {
   const ctx = document.getElementById("decisionRatioChart");
   if (!ctx || !window.Chart) return;
 
+  const isDark = document.documentElement.classList.contains("dark");
+  const legendColor = isDark ? "#94a3b8" : "#475569";
+
   decisionChartInstance = new Chart(ctx, {
     type: "doughnut",
     data: {
       labels: ["Allowed", "Denied"],
       datasets: [{
         data: [stats.allowed, stats.denied],
-        backgroundColor: ["#10b981", "#f43f5e"],
-        borderColor: ["#060814", "#060814"],
+        backgroundColor: ["#059669", "#e11d48"],
+        borderColor: isDark ? "#060814" : "#ffffff",
         borderWidth: 2
       }]
     },
@@ -732,12 +796,20 @@ function initChart() {
       plugins: {
         legend: {
           position: "bottom",
-          labels: { color: "#94a3b8", font: { family: "JetBrains Mono", size: 11 } }
+          labels: { color: legendColor, font: { family: "JetBrains Mono", size: 11 } }
         }
       },
       cutout: "70%"
     }
   });
+}
+
+function updateChartTheme() {
+  if (!decisionChartInstance) return;
+  const isDark = document.documentElement.classList.contains("dark");
+  decisionChartInstance.options.plugins.legend.labels.color = isDark ? "#94a3b8" : "#475569";
+  decisionChartInstance.data.datasets[0].borderColor = isDark ? "#060814" : "#ffffff";
+  decisionChartInstance.update();
 }
 
 function setupTabs() {
@@ -747,11 +819,11 @@ function setupTabs() {
   tabBtns.forEach(btn => {
     btn.addEventListener("click", () => {
       tabBtns.forEach(b => {
-        b.classList.remove("text-violet-400", "border-violet-500", "bg-violet-950/40");
-        b.classList.add("text-slate-400", "border-transparent");
+        b.classList.remove("border-indigo-600", "text-indigo-600", "bg-indigo-50/70", "dark:border-violet-500", "dark:text-violet-400", "dark:bg-violet-950/40");
+        b.classList.add("border-transparent", "text-slate-500", "dark:text-slate-400");
       });
-      btn.classList.add("text-violet-400", "border-violet-500", "bg-violet-950/40");
-      btn.classList.remove("text-slate-400", "border-transparent");
+      btn.classList.add("border-indigo-600", "text-indigo-600", "bg-indigo-50/70", "dark:border-violet-500", "dark:text-violet-400", "dark:bg-violet-950/40");
+      btn.classList.remove("border-transparent", "text-slate-500", "dark:text-slate-400");
 
       const target = btn.dataset.tab;
       tabContents.forEach(content => {
