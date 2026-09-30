@@ -1,6 +1,7 @@
 package ztna.main
 
 import rego.v1
+import data.ztna.network
 import data.ztna.posture
 import data.ztna.rbac
 
@@ -13,14 +14,15 @@ user_roles := object.get(input, ["identity", "roles"], [])
 is_authenticated := object.get(input, ["identity", "authenticated"], false)
 
 # Master authorization logic
-# Public endpoints bypass identity and posture evaluation
+# Public endpoints bypass identity, posture, and network evaluation
 allow if rbac.is_public
 
-# Protected endpoints require valid identity, RBAC authorization, and compliant posture
+# Protected endpoints require valid identity, RBAC authorization, compliant posture, and trusted network
 allow if {
     is_authenticated
     rbac.allow
     posture.allow
+    network.allow
 }
 
 # Collect all policy violations
@@ -38,6 +40,11 @@ violations contains msg if {
 violations contains msg if {
     not rbac.is_public
     some msg in posture.violations
+}
+
+violations contains msg if {
+    not rbac.is_public
+    some msg in network.violations
 }
 
 # Downstream identity headers injected upon successful authorization
