@@ -458,6 +458,36 @@ For every access attempt, the Policy Administrator emits a structured JSON audit
 
 ---
 
+## Developer Tooling & Operations CLI
+
+This repository provides built-in utilities and automation for security engineers:
+
+| Tool / Target | Description | Usage Command |
+| :--- | :--- | :--- |
+| **`Makefile`** | Ergonomic target automation for builds, tests, certs, and containers | `make up`, `make test`, `make down` |
+| **`tools/diagnose_stack.py`** | Validates reachability across all 5 components & inspects TLS certificates | `python tools/diagnose_stack.py` |
+| **`tools/interactive_tester.py`** | Interactive terminal menu to test identities, postures, and endpoints | `python tools/interactive_tester.py` |
+| **`tools/get_token.py`** | Fetches and decodes Keycloak OIDC JWT tokens for test personas | `python tools/get_token.py --user alice` |
+| **`tests/run_all_tests.sh`** | Cross-platform automated test runner (OPA + Pytest + Flake8) | `./tests/run_all_tests.sh` |
+| **MITRE ATT&CK Matrix** | Detailed threat model mapping against adversarial TTPs | See [`docs/mitre_attack_mapping.md`](docs/mitre_attack_mapping.md) |
+
+---
+
+## Observability & Prometheus Telemetry
+
+The Policy Administrator (`gateway/ext_authz_service`) exports real-time metrics in standard Prometheus format on `/metrics`:
+- `ztna_evaluations_total{decision="allow|deny"}`: Counter of authorization decisions.
+- `ztna_evaluation_duration_seconds`: Histogram measuring OPA PDP evaluation latency.
+- `ztna_violations_total{reason="..."}`: Granular count of policy violations.
+
+To launch the Prometheus monitoring profile alongside the gateway stack:
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.monitoring.yml up -d
+```
+Access the Prometheus dashboard at **`http://localhost:9090`**.
+
+---
+
 ## Interactive Frontend Web Portal & Vercel Hosting
 
 This repository includes a standalone, high-performance interactive web portal designed with a distinct **Quantum Violet & Electric Indigo** theme (`web/`) to showcase the architecture and let users experiment with zero trust policy evaluations in real time.
