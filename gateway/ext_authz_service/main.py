@@ -15,6 +15,8 @@ import jwt
 from fastapi import FastAPI, Request, Response, status
 from fastapi.responses import JSONResponse
 
+from metrics import record_evaluation, record_violation, generate_prometheus_metrics
+
 # Configure Structured Logging
 logger = logging.getLogger("ztna_ext_authz")
 logging.basicConfig(
@@ -268,6 +270,12 @@ def healthz():
     }
 
 
+@app.get("/metrics", tags=["System"])
+def metrics():
+    """Prometheus telemetry scraping endpoint for ZTNA decisions."""
+    return Response(content=generate_prometheus_metrics(), media_type="text/plain")
+
+
 @app.api_route("/{full_path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def authorize_request(full_path: str, request: Request):
     """
@@ -332,9 +340,15 @@ async def authorize_request(full_path: str, request: Request):
     }
 
     # Query OPA PDP
+    start_eval_time = datetime.datetime.now(datetime.timezone.utc).timestamp()
     pdp_decision = await evaluate_opa_policy(opa_input)
+    eval_duration = datetime.datetime.now(datetime.timezone.utc).timestamp() - start_eval_time
     allowed = pdp_decision.get("allowed", False)
     violations = pdp_decision.get("violations", [])
+
+    record_evaluation(allowed, eval_duration)
+    for v in violations:
+        record_violation(v)
 
     # Audit log decision
     emit_security_audit_log(
