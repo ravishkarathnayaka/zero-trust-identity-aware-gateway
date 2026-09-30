@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: "ztna_ext_authz"
+    static_configs:
+      - targets: ["ext_authz:9001"]
+
+  - job_name: "ztna_envoy_pep"
+    metrics_path: "/stats/prometheus"
+    static_configs:
+      - targets: ["envoy:9901"]
+
+  - job_name: "ztna_opa_pdp"
+    static_configs:
+      - targets: ["opa:8181"]

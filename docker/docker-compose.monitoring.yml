@@ -1,0 +1,21 @@
+# ==============================================================================
+# Docker Compose Extension: Prometheus & Metrics Telemetry
+# Run with: docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+# ==============================================================================
+services:
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: ztna_prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - ztna_internal
+    depends_on:
+      - ext_authz
+      - envoy
+      - opa
